@@ -1,0 +1,369 @@
+---
+title: "New York Philharmonic"
+author: "Marco Villotta"
+date: "2023-06-23"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyr)
+library(dplyr)
+library(jsonlite)
+library(purrr)
+library(stringr)
+library(lubridate)
+library(modelr)
+library(broom)
+library(tibble)
+library(ggplot2)
+library(mgcv)
+library(ineq)
+
+performances <- readRDS("perf.RDS")
+pcp <- readRDS("pcp.RDS")
+pcp_models_simp <- readRDS("pcp_models_simp.RDS")
+pcp_glance <- readRDS("pcp_glance.RDS")
+pcp_resids <- readRDS("pcp_resids.RDS")
+before_1909 <- readRDS("before_1909")
+regs <- readRDS("regs.RDS")
+ccn2 <- readRDS("ccn2.RDS")
+ccn <- readRDS("ccn.RDS")
+lin_regs <- readRDS("lin_regs.RDS")
+BernsteinHeadNeg <- readRDS("BernsteinHeadNeg.RDS")
+BernsteinHeadPos <- readRDS("BernsteinHeadPos.RDS")
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+ggplot(performances) +
+  geom_bar(aes(y = orchestra)) +
+  labs(
+    x = "numero di performance",
+    y = NULL,
+    title = "Orchestre presenti nel dataset"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+ggplot(performances) +
+  geom_point(aes(seasonYear, orchestra), alpha = 1/4)  +
+  labs(
+    x = "stagione",
+    y = NULL,
+    title = "Orchestre attive negli anni"
+  ) +
+  theme_light()
+```
+
+```{r}
+performances <- performances %>%
+filter(orchestra == "New York Philharmonic")
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+- come evolve negli anni (nel lungo periodo) il repertorio dell'orchestra?
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+ggplot(pcp,aes(seasonYear, perc)) +
+  geom_line(aes(color = composerName), alpha = 1/4, show.legend = FALSE) +
+  labs(
+    x = "stagione",
+    y = "performance compositore / performance stagione (%)",
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+pcp %>%
+  filter(composerName == "Dvorak, Antonín" | composerName == "Ravel, Maurice" |
+           composerName == "Strauss, Richard" | composerName == "Prokofiev, Sergei") %>%
+ggplot(aes(seasonYear, perc)) +
+  geom_line(show.legend = FALSE) +
+  geom_point(show.legend = FALSE) +
+  stat_smooth(se=F, method='lm', formula=y~poly(x,2)) +
+  labs(
+    x = "stagione",
+    y = "performance compositore / performance stagione (%)",
+    title = "Componenti quadratiche positive (Dvorak, Strauss) e negative (Ravel, Prokofiev)"
+  ) +
+  facet_wrap(~composerName) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+pcp %>%
+  filter(composerName == "Chopin, Frédéric" | composerName == "Bruch, Max" |
+           composerName == "Weber, Carl Maria Von" | composerName == "Gluck, Christoph Willibald") %>%
+ggplot(aes(seasonYear, perc)) +
+  geom_line(show.legend = FALSE) +
+  geom_point(show.legend = FALSE) +
+  stat_smooth(se=F, method='lm', formula=y~poly(x,2)) +
+  labs(
+    x = "stagione",
+    y = "performance compositore / performance stagione (%)",
+    title = "Alcuni modelli con un buon fit"
+  ) +
+  facet_wrap(~composerName) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+highres <- pcp_resids %>%
+  filter(resid > 0.1 | resid < -0.1) %>%
+  distinct(composerName)
+
+pcp %>%
+  semi_join(highres) %>%
+  ggplot() +
+  geom_point(aes(x = seasonYear, y = perc),alpha = 1/4) +
+  facet_wrap(~composerName) +
+  labs(
+    x = "stagione",
+    y = "performance compositore / performance stagione (%)",
+    title = "Compositori con residui più alti di 0.1"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+performances %>%
+  filter(composerName == "Wagner, Richard") %>%
+  filter(!is.na(conductorName)) %>%
+  filter(seasonYear <= 1925) %>%
+  mutate(
+    direttore = ifelse(conductorName == "Stransky, Josef", "Stransky, Josef", "Altri direttori")
+  ) %>%
+  ggplot() +
+    geom_bar(aes(seasonYear,fill=direttore))  +
+  labs(
+    x = "stagione",
+    y = "numero di performance",
+    title = "Performance di Richard Wagner fino al 1925"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+top_Wagner <- performances %>%
+  filter(composerName == "Wagner, Richard") %>%
+  filter(seasonYear <= 1950) %>%
+  group_by(seasonYear,conductorName) %>%
+  count() %>%
+  group_by(conductorName) %>%
+  mutate(total = sum(n)) %>%
+  arrange(-total) %>%
+  distinct(conductorName, total) %>%
+  head(8) %>%
+  mutate(group = conductorName)
+
+colorBlindBlack8  <- c("#000000", "#E69F00", "#56B4E9", "#009E73", 
+                       "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+performances %>%
+  filter(composerName == "Wagner, Richard") %>%
+  filter(seasonYear <= 1950) %>%
+  inner_join(top_Wagner) %>%
+  ggplot() +
+  geom_area(aes(seasonYear,fill=conductorName), stat = "bin", binwidth = 1, show.legend = TRUE) +
+  scale_fill_manual(values=colorBlindBlack8) +
+  facet_wrap(~conductorName)   +
+  labs(
+    x = "stagione",
+    y = "numero di performance",
+    title = "Performance di Richard Wagner",
+    subtitle = "Gli otto maggiori direttori di Richard Wagner fino al 1950"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+pcp %>%
+  select(seasonYear,n) %>%
+  group_by(seasonYear) %>%
+  mutate(gini = Gini(n)) %>%
+  distinct(seasonYear,gini) %>%
+ggplot() +
+    geom_vline(aes(xintercept = 1909, color = "red"), show.legend = FALSE) +
+    annotate("text", x = 1917, y = 0.06, label="1909-1910", angle=0) +
+    geom_line(aes(seasonYear,gini)) +
+  labs(
+    x = "stagione",
+    y = "coefficiente di Gini della stagione",
+    title = "Coefficiente di Gini"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+performances %>%
+  group_by(seasonYear) %>%
+  mutate(composers = n_distinct(composerName)) %>%
+  ungroup() %>%
+ggplot() +
+    geom_vline(aes(xintercept = 1909, color = "red"), show.legend = FALSE) +
+    annotate("text", x = 1917, y = 0.06, label="1909-1910", angle=0) +
+    geom_line(aes(seasonYear,composers)) +
+  labs(
+    x = "stagione",
+    y = "numero di compositori rappresentati nella stagione",
+    title = "Numero di compositori rappresentati in ogni stagione"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+pcp %>%
+  group_by(seasonYear) %>%
+  mutate(median = median(perc)) %>%
+  ggplot() +
+  geom_line(aes(seasonYear,median)) +
+  geom_vline(aes(xintercept = 1909, color = "red"), show.legend = FALSE) +
+  annotate("text", x = 1917, y = 0.06, label="1909-1910", angle=0) +
+  labs(
+    x = "stagione",
+    y = "mediana",
+    title = "Mediana delle percentuali performance compositore / performance stagione",
+    subtitle = "Andamento nelle stagioni"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+ggplot(
+  pcp %>%
+  inner_join(before_1909)
+) +
+  geom_point(aes(x = seasonYear, y = perc),alpha = 1/4) +
+  geom_vline(aes(xintercept = 1909, color = "red"), show.legend = FALSE) +
+  facet_wrap(~composerName) +
+  labs(
+    x = NULL,
+    y = NULL,
+    title = "Compositori rappresentati prima della stagione 1909-1910",
+    subtitle = "Presenti per almeno dieci stagioni nelle stagioni precedenti",
+  ) +
+  scale_x_continuous(labels = NULL) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+- come evolve negli anni (nel lungo periodo) il repertorio dei direttori d'orchestra?
+- si possono individuare dei trend?
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+very_good <- regs %>%
+  unnest(glanced) %>%
+  filter(r.squared >= 0.925) %>%
+select(conductorName, composerName)
+
+ccn2 %>%
+  filter(conductorName == "Bernstein, Leonard") %>%
+  filter(composerName == "Ives, Charles" | composerName == "Piston, Walter" |
+           composerName == "Gershwin, George" | composerName == "Foss, Lukas") %>%
+  ggplot(aes(seasonYear,perc), show.legend = FALSE) +
+  geom_line() +
+  geom_point() +
+  geom_smooth(se=F, method='lm', formula=y~poly(x,2)) +
+  facet_wrap(~composerName) +
+  labs(
+    x = "stagioni",
+    y = "performance compositore / performance direttore (%)",
+    title = "Leonard Bernstein. Adeguatezza del modello quadratico"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+ccn2 %>%
+  filter(conductorName == "Bernstein, Leonard") %>%
+  filter(composerName == "Beethoven, Ludwig van" | composerName == "Mozart, Wolfgang Amadeus" |
+           composerName == "Copland, Aaron" | composerName == "Mahler, Gustav") %>%
+  ggplot(aes(seasonYear,perc), show.legend = FALSE) +
+  geom_line() +
+  geom_point() +
+  geom_smooth(se=F, method='lm', formula=y~poly(x,2)) +
+  facet_wrap(~composerName) +
+  labs(
+    x = "stagioni",
+    y = "performance compositore / performance direttore (%)",
+    title = "Leonard Bernstein. Scarsità del modello quadratico"
+  ) +
+  theme_light()
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+ccn %>%
+  group_by(conductorName,composerName) %>%
+  mutate(seasons = n_distinct(seasonYear)) %>%
+  filter(seasons >= 10) %>%
+  inner_join(BernsteinHeadPos, by = c("conductorName","composerName")) %>%
+  ggplot(aes(seasonYear.x,perc), show.legend = FALSE) +
+  geom_line() +
+  geom_point() +
+  geom_smooth(se=F, method='lm', formula=y~x) +
+  facet_wrap(~composerName) +
+  labs(
+    x = "stagioni",
+    y = "performance compositore / performance direttore (%)",
+    title = "Leonard Bernstein. Modelli lineari crescenti",
+    subtitle = "Compositori che Bernstein ha diretto per almeno dieci stagioni"
+  ) +
+  theme_light()  
+```
+
+## New York Philharmonic {.flexbox .vcenter}
+
+```{r, message=FALSE, out.width="80%", fig.align = 'center'}
+ccn %>%
+  group_by(conductorName,composerName) %>%
+  mutate(seasons = n_distinct(seasonYear)) %>%
+  filter(seasons >= 10) %>%
+  inner_join(BernsteinHeadNeg, by = c("conductorName","composerName")) %>%
+  ggplot(aes(seasonYear.x,perc), show.legend = FALSE) +
+  geom_line() +
+  geom_point() +
+  geom_smooth(se=F, method='lm', formula=y~x) +
+  facet_wrap(~composerName) +
+  facet_wrap(~composerName)  +
+  labs(
+    x = "stagioni",
+    y = "performance compositore / performance direttore (%)",
+    title = "Leonard Bernstein. Modelli lineari decrescenti",
+    subtitle = "Compositori che Bernstein ha diretto per almeno dieci stagioni"
+  ) +
+  theme_light() 
+```
