@@ -397,6 +397,8 @@ performances <- programsT %>%
   mutate(seasonYear = sapply(season,function (x) as.integer(str_extract(x, "[[:digit:]]+")))) %>%
   ungroup()
 
+saveRDS(performances, file = "perf.RDS")
+
 remove(programsT)
 ```
 
